@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#080810">
+  <title>HAFENKIPPE</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&display=swap');
+    * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    :root {
+      --bg: #080810; --bg2: #0e0e1a; --surface: #13131f; --card: #1a1a2a;
+      --border: #222235; --red: #ff3b5c; --orange: #ff6b35;
+      --amber: #ffb300; --green: #00e676; --blue: #448aff; --purple: #b388ff;
+      --text: #f0f0f8; --muted: #5a5a7a; --muted2: #333348;
+    }
+    body { background: var(--bg); color: var(--text); font-family: 'Space Grotesk', -apple-system, sans-serif; min-height: 100vh; max-width: 480px; margin: 0 auto; overflow-x: hidden; }
+
+    /* ── SCAN OVERLAY ── */
+    #scan-overlay { display: none; position: fixed; inset: 0; z-index: 999; background: #000; flex-direction: column; align-items: center; justify-content: center; }
+    #scan-overlay.open { display: flex; }
+    #scan-video { width: 100%; height: 100%; object-fit: cover; position: absolute; inset: 0; }
+    .scan-ui { position: relative; z-index: 2; display: flex; flex-direction: column; align-items: center; gap: 28px; }
+    .scan-frame { width: 270px; height: 165px; border-radius: 18px; position: relative; box-shadow: 0 0 0 4000px rgba(0,0,0,0.7); }
+    .sc { position: absolute; width: 28px; height: 28px; border-color: var(--red); border-style: solid; }
+    .sc.tl { top:-2px;left:-2px;border-width:3px 0 0 3px;border-radius:6px 0 0 0; }
+    .sc.tr { top:-2px;right:-2px;border-width:3px 3px 0 0;border-radius:0 6px 0 0; }
+    .sc.bl { bottom:-2px;left:-2px;border-width:0 0 3px 3px;border-radius:0 0 0 6px; }
+    .sc.br { bottom:-2px;right:-2px;border-width:0 3px 3px 0;border-radius:0 0 6px 0; }
+    .scan-line { position:absolute;left:8px;right:8px;height:2px;background:linear-gradient(90deg,transparent,var(--red),transparent);border-radius:1px;animation:scan-move 1.8s ease-in-out infinite; }
+    @keyframes scan-move { 0%,100%{top:10%;opacity:1}50%{top:85%;opacity:.7} }
+    .scan-hint-text { color:rgba(255,255,255,.85);font-size:15px;font-weight:600;text-align:center; }
+    .scan-hint-text small { display:block;color:rgba(255,255,255,.4);font-size:12px;margin-top:4px;font-weight:400; }
+    .scan-close { position:absolute;top:20px;right:20px;z-index:3;background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:#fff;width:44px;height:44px;border-radius:50%;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center; }
+    #scan-success { display:none;position:absolute;inset:0;z-index:4;background:rgba(0,0,0,.92);align-items:center;justify-content:center;flex-direction:column;gap:16px; }
+    #scan-success.show { display:flex; }
+    .success-ring { width:110px;height:110px;border-radius:50%;border:3px solid var(--red);display:flex;align-items:center;justify-content:center;font-size:52px;animation:ring-pop .4s cubic-bezier(.34,1.56,.64,1);box-shadow:0 0 40px rgba(255,59,92,.5); }
+    @keyframes ring-pop { from{transform:scale(0) rotate(-30deg);opacity:0}to{transform:scale(1) rotate(0);opacity:1} }
+    .success-label { color:#fff;font-size:22px;font-weight:800; }
+    .success-sub { color:var(--muted);font-size:14px; }
+
+    /* ── TRIGGER SHEET ── */
+    #trigger-sheet { display:none;position:fixed;inset:0;z-index:998;background:rgba(0,0,0,.75);align-items:flex-end;justify-content:center; }
+    #trigger-sheet.open { display:flex; }
+    .trigger-panel { background:var(--surface);border:1px solid var(--border);border-radius:24px 24px 0 0;padding:24px 20px 40px;width:100%;max-width:480px; }
+    .trigger-title { font-size:18px;font-weight:800;margin-bottom:6px; }
+    .trigger-sub { font-size:13px;color:var(--muted);margin-bottom:20px; }
+    .trigger-grid { display:grid;grid-template-columns:1fr 1fr;gap:10px; }
+    .trigger-btn { background:var(--card);border:1px solid var(--border);border-radius:14px;padding:14px 12px;display:flex;flex-direction:column;align-items:center;gap:6px;cursor:pointer;transition:all .15s;font-family:inherit; }
+    .trigger-btn:active { transform:scale(.95); }
+    .trigger-btn.selected { border-color:var(--red);background:rgba(255,59,92,.12); }
+    .trigger-icon { font-size:26px; }
+    .trigger-name { font-size:13px;font-weight:700;color:var(--text); }
+    .trigger-skip { width:100%;margin-top:14px;background:transparent;border:1px solid var(--border);border-radius:12px;color:var(--muted);font-size:14px;font-weight:600;padding:12px;cursor:pointer;font-family:inherit; }
+    .trigger-skip:active { opacity:.6; }
+
+    /* ── SMOKE ── */
+    .smoke-particle { position:fixed;border-radius:50%;pointer-events:none;z-index:50;background:radial-gradient(circle,rgba(255,255,255,.3) 0%,transparent 70%);animation:smoke-up var(--dur) ease-out forwards; }
+    @keyframes smoke-up { 0%{transform:translateY(0) scale(1);opacity:.8}100%{transform:translateY(-150px) translateX(var(--dx)) scale(3);opacity:0} }
+
+    /* ── TAB BAR ── */
+    .tab-bar { position:fixed;bottom:0;left:0;right:0;max-width:480px;margin:0 auto;display:flex;background:rgba(8,8,16,.96);border-top:1px solid var(--border);z-index:100;padding-bottom:env(safe-area-inset-bottom,0);backdrop-filter:blur(20px); }
+    .tab { flex:1;display:flex;flex-direction:column;align-items:center;padding:10px 0 8px;cursor:pointer;color:var(--muted);font-size:9px;font-weight:800;gap:4px;transition:color .2s;letter-spacing:.8px;text-transform:uppercase; }
+    .tab.active { color:var(--red); }
+    .tab svg { width:22px;height:22px; }
+
+    /* ── SCREENS ── */
+    .screen { display:none;padding:0 0 90px; }
+    .screen.active { display:block; }
+
+    /* ── HOME ── */
+    .hero { background:linear-gradient(160deg,#120818 0%,#080810 55%);padding:20px 20px 24px;border-bottom:1px solid var(--border);position:relative;overflow:hidden; }
+    .hero::after { content:'';position:absolute;top:-80px;right:-80px;width:240px;height:240px;border-radius:50%;background:radial-gradient(circle,rgba(255,59,92,.12),transparent 70%);pointer-events:none; }
+    .hero-top { display:flex;justify-content:space-between;align-items:center;margin-bottom:20px; }
+    .app-logo { display:flex;align-items:center;gap:8px; }
+    .app-logo-icon { font-size:20px; }
+    .app-logo-name { font-size:18px;font-weight:800;letter-spacing:-0.5px; }
+    .app-logo-name span { color:var(--red); }
+    .hero-date { font-size:12px;color:var(--muted);font-weight:500; }
+    .hero-center { display:flex;flex-direction:column;align-items:center;gap:8px; }
+
+    /* TIMER RING */
+    .timer-ring-wrap { position:relative;width:190px;height:190px;margin-bottom:4px; }
+    .timer-svg { position:absolute;inset:0;transform:rotate(-90deg); }
+    .timer-track { fill:none;stroke:var(--border);stroke-width:4; }
+    .timer-progress { fill:none;stroke:var(--red);stroke-width:4;stroke-linecap:round;transition:stroke-dashoffset .5s ease; }
+    .big-btn { position:absolute;inset:10px;border-radius:50%;background:radial-gradient(circle at 38% 32%,#ff6b7a,#ff3b5c 55%,#cc1f3a);border:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;box-shadow:0 0 30px rgba(255,59,92,.4),0 0 60px rgba(255,59,92,.15);transition:transform .12s cubic-bezier(.34,1.56,.64,1);user-select:none; }
+    .big-btn:active { transform:scale(.88);box-shadow:0 0 15px rgba(255,59,92,.3); }
+    .btn-emoji { font-size:38px;line-height:1;margin-bottom:2px; }
+    .btn-count { font-size:52px;font-weight:800;color:#fff;line-height:1;letter-spacing:-2px; }
+    .btn-label { font-size:10px;color:rgba(255,255,255,.65);font-weight:700;letter-spacing:1.5px;text-transform:uppercase; }
+
+    .hero-timer { font-size:13px;color:var(--muted);font-weight:600; }
+    .hero-timer strong { color:var(--text); }
+
+    /* ACTIONS */
+    .action-row { display:flex;gap:10px;padding:14px 20px 0; }
+    .action-chip { flex:1;display:flex;align-items:center;justify-content:center;gap:7px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:13px 10px;font-size:13px;font-weight:700;cursor:pointer;transition:transform .1s,background .15s;color:var(--text);font-family:inherit; }
+    .action-chip:active { transform:scale(.95);background:var(--card); }
+    .action-chip.primary { background:rgba(255,59,92,.1);border-color:rgba(255,59,92,.3);color:var(--red); }
+    .chip-icon { font-size:17px; }
+    .chip-badge { background:var(--red);color:#fff;font-size:9px;font-weight:800;padding:2px 6px;border-radius:8px;letter-spacing:.5px; }
+
+    /* PILLS */
+    .pills-row { display:flex;gap:8px;padding:12px 20px 0; }
+    .pill { flex:1;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:12px 8px;text-align:center; }
+    .pill-val { font-size:17px;font-weight:800; }
+    .pill-lbl { font-size:10px;color:var(--muted);margin-top:2px;font-weight:700;letter-spacing:.5px;text-transform:uppercase; }
+
+    /* TALLY */
+    .section { padding:14px 20px 0; }
+    .section-title { font-size:10px;font-weight:800;color:var(--muted);letter-spacing:1.5px;text-transform:uppercase;margin-bottom:8px; }
+    .tally-box { background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px;min-height:56px;display:flex;align-items:center;flex-wrap:wrap;gap:10px; }
+    .tally-group { position:relative;display:flex;align-items:center;gap:3px;height:30px; }
+    .tally-mark { width:3px;height:24px;background:var(--text);border-radius:2px;animation:mark-in .15s cubic-bezier(.34,1.56,.64,1) both; }
+    .tally-cross { position:absolute;left:-3px;right:-3px;height:3px;background:var(--red);border-radius:2px;transform:rotate(-68deg) translateY(-2px);transform-origin:center;animation:mark-in .15s cubic-bezier(.34,1.56,.64,1) both; }
+    @keyframes mark-in { from{transform:scaleY(0);opacity:0}to{transform:scaleY(1);opacity:1} }
+    .tally-empty { font-size:13px;color:var(--muted); }
+
+    /* TRIGGER SUMMARY */
+    .trigger-summary { background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px; }
+    .trigger-bars { display:flex;flex-direction:column;gap:8px; }
+    .trigger-bar-row { display:flex;align-items:center;gap:10px; }
+    .trigger-bar-label { font-size:12px;font-weight:700;width:90px;flex-shrink:0;display:flex;align-items:center;gap:5px; }
+    .trigger-bar-bg { flex:1;height:8px;background:var(--border);border-radius:4px;overflow:hidden; }
+    .trigger-bar-fill { height:100%;border-radius:4px;transition:width .6s cubic-bezier(.34,1.56,.64,1); }
+    .trigger-bar-val { font-size:12px;font-weight:800;width:24px;text-align:right;flex-shrink:0;color:var(--muted); }
+
+    /* PAGE HEADER */
+    .page-header { padding:20px 20px 14px;border-bottom:1px solid var(--border); }
+    .page-title { font-size:22px;font-weight:800;letter-spacing:-.5px; }
+
+    /* STATS / CHARTS */
+    .chart-card { background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px; }
+    .chart-title { font-size:11px;font-weight:800;color:var(--muted);letter-spacing:1.2px;text-transform:uppercase;margin-bottom:14px; }
+
+    /* LINE CHART */
+    .line-chart-wrap { position:relative;height:130px;margin-bottom:8px; }
+    .line-chart-svg { width:100%;height:100%;overflow:visible; }
+    .lc-grid { stroke:var(--border);stroke-width:1; }
+    .lc-line { fill:none;stroke:var(--red);stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round; }
+    .lc-area { opacity:.15; }
+    .lc-dot { fill:var(--red);stroke:var(--bg);stroke-width:2; }
+    .lc-labels { display:flex;justify-content:space-between;margin-top:4px; }
+    .lc-label { font-size:10px;font-weight:700;color:var(--muted);text-align:center;flex:1; }
+
+    /* HEATMAP */
+    .heatmap-grid { display:grid;grid-template-columns:repeat(24,1fr);gap:2px;margin-bottom:6px; }
+    .hm-cell { aspect-ratio:1;border-radius:2px;transition:opacity .3s; }
+    .hm-labels { display:flex;justify-content:space-between; }
+    .hm-label { font-size:10px;color:var(--muted);font-weight:600; }
+
+    /* STAT GRID */
+    .stat-grid { display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px; }
+    .stat-tile { background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:14px; }
+    .stat-tile-val { font-size:24px;font-weight:900;letter-spacing:-1px; }
+    .stat-tile-lbl { font-size:10px;font-weight:800;color:var(--muted);margin-top:2px;letter-spacing:.5px;text-transform:uppercase; }
+    .stat-tile-sub { font-size:11px;color:var(--muted2);margin-top:2px; }
+
+    /* VERDICT */
+    .verdict-card { border-radius:16px;padding:16px;display:flex;align-items:center;gap:12px;margin-bottom:12px; }
+    .verdict-icon { font-size:32px; }
+    .verdict-title { font-size:17px;font-weight:800; }
+    .verdict-sub { font-size:12px;margin-top:3px;opacity:.8; }
+
+    /* CALENDAR */
+    .cal-wrap { padding:14px 20px 0; }
+    .cal-nav { display:flex;align-items:center;justify-content:space-between;margin-bottom:12px; }
+    .cal-nav button { background:var(--surface);border:1px solid var(--border);color:var(--text);font-size:18px;cursor:pointer;padding:6px 14px;border-radius:10px;line-height:1;font-family:inherit; }
+    .cal-nav button:active { opacity:.6; }
+    .cal-nav .month-title { font-size:16px;font-weight:800; }
+    .weekdays { display:grid;grid-template-columns:repeat(7,1fr);text-align:center;margin-bottom:6px; }
+    .weekdays span { font-size:10px;font-weight:800;color:var(--muted);padding:4px 0;letter-spacing:.5px; }
+    .days-grid { display:grid;grid-template-columns:repeat(7,1fr);gap:3px; }
+    .day-cell { aspect-ratio:1;display:flex;flex-direction:column;align-items:center;justify-content:center;border-radius:10px;cursor:pointer;font-size:13px;font-weight:600;gap:2px;transition:background .15s; }
+    .day-cell:active { opacity:.6; }
+    .day-cell.today { color:var(--red);font-weight:800; }
+    .day-cell.selected { background:var(--red);color:#fff!important; }
+    .day-dot { width:4px;height:4px;border-radius:50%; }
+    .cal-legend { display:flex;justify-content:space-around;margin-top:12px;padding-top:10px;border-top:1px solid var(--border); }
+    .legend-item { display:flex;align-items:center;gap:5px;font-size:11px;color:var(--muted);font-weight:600; }
+    .legend-dot { width:8px;height:8px;border-radius:50%; }
+    .detail-card { background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;margin-top:12px; }
+    .detail-title { font-size:16px;font-weight:800;margin-bottom:4px; }
+    .detail-sub { font-size:13px;color:var(--muted);margin-bottom:10px; }
+    .entry-row { display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px solid var(--border); }
+    .entry-row:last-child { border-bottom:none; }
+    .entry-time { font-size:15px;font-weight:700;color:var(--red); }
+    .entry-meta { display:flex;align-items:center;gap:8px; }
+    .entry-trigger { font-size:12px;background:var(--card);border-radius:8px;padding:3px 8px;font-weight:600; }
+    .entry-num { font-size:12px;color:var(--muted);font-weight:600; }
+
+    /* SETTINGS */
+    .settings-section { background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:16px;margin-bottom:12px; }
+    .settings-section h3 { font-size:15px;font-weight:800;margin-bottom:4px; }
+    .settings-section p { font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.5; }
+    .field { margin-bottom:12px; }
+    .field label { display:block;font-size:11px;font-weight:800;margin-bottom:6px;color:var(--muted);letter-spacing:.8px;text-transform:uppercase; }
+    .field input { width:100%;background:var(--bg);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:16px;padding:11px 14px;font-family:inherit; }
+    .field input:focus { outline:none;border-color:var(--red); }
+    .save-btn { width:100%;background:var(--red);color:#fff;border:none;border-radius:12px;font-size:15px;font-weight:800;padding:14px;cursor:pointer;font-family:inherit;transition:background .3s; }
+    .save-btn:active { opacity:.8; }
+    .save-btn.saved { background:var(--green);color:#000; }
+    .delete-btn { width:100%;background:transparent;border:1px solid #2a2a3a;color:#444;border-radius:12px;font-size:14px;font-weight:700;padding:13px;cursor:pointer;font-family:inherit; }
+    .delete-btn:active { opacity:.6; }
+
+    /* TOAST */
+    #toast { position:fixed;bottom:86px;left:50%;transform:translateX(-50%) translateY(10px);background:var(--card);color:var(--text);padding:10px 20px;border-radius:20px;font-size:13px;font-weight:700;opacity:0;transition:all .25s;z-index:200;white-space:nowrap;border:1px solid var(--border); }
+    #toast.show { opacity:1;transform:translateX(-50%) translateY(0); }
+  </style>
+</head>
+<body>
+
+<!-- SCAN OVERLAY -->
+<div id="scan-overlay">
+  <video id="scan-video" autoplay playsinline muted></video>
+  <div class="scan-ui">
+    <div class="scan-frame">
+      <div class="sc tl"></div><div class="sc tr"></div><div class="sc bl"></div><div class="sc br"></div>
+      <div class="scan-line"></div>
+    </div>
+    <div class="scan-hint-text">Zigarettenpackung ins Bild halten<small>Wird automatisch erkannt</small></div>
+  </div>
+  <button class="scan-close" onclick="closeScan()">✕</button>
+  <div id="scan-success">
+    <div class="success-ring">🚬</div>
+    <div class="success-label">Erkannt!</div>
+    <div class="success-sub" id="scan-sub">Wähle jetzt deinen Auslöser</div>
+  </div>
+</div>
+
+<!-- TRIGGER SHEET -->
+<div id="trigger-sheet">
+  <div class="trigger-panel">
+    <div class="trigger-title">Was war der Auslöser?</div>
+    <div class="trigger-sub">Optional – hilft dir Muster zu erkennen</div>
+    <div class="trigger-grid" id="trigger-grid"></div>
+    <button class="trigger-skip" onclick="confirmTrigger(null)">Überspringen</button>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast"></div>
+
+<!-- ═══ HOME ══════════════════════════════════════════════════════════ -->
+<div id="screen-home" class="screen active">
+  <div class="hero">
+    <div class="hero-top">
+      <div class="app-logo">
+        <span class="app-logo-icon">🚬</span>
+        <span class="app-logo-name">HAFEN<span>KIPPE</span></span>
+      </div>
+      <div class="hero-date" id="date-label"></div>
+    </div>
+    <div class="hero-center">
+      <div class="timer-ring-wrap">
+        <svg class="timer-svg" viewBox="0 0 190 190">
+          <circle class="timer-track" cx="95" cy="95" r="88"/>
+          <circle class="timer-progress" id="timer-ring" cx="95" cy="95" r="88" stroke-dasharray="553" stroke-dashoffset="553"/>
+        </svg>
+        <button class="big-btn" id="add-btn" onclick="startAddFlow(event)">
+          <span class="btn-emoji">🚬</span>
+          <span class="btn-count" id="today-count">0</span>
+          <span class="btn-label" id="today-label">Heute</span>
+        </button>
+      </div>
+      <div class="hero-timer" id="hero-timer">Tippen zum Eintragen</div>
+    </div>
+  </div>
+
+  <div class="action-row">
+    <button class="action-chip primary" onclick="openScan()">
+      <span class="chip-icon">📷</span> Scannen <span class="chip-badge">NEU</span>
+    </button>
+    <button class="action-chip" onclick="undoLast()">
+      <span class="chip-icon">↩</span> Rückgängig
+    </button>
+  </div>
+
+  <div class="pills-row">
+    <div class="pill">
+      <div class="pill-val" id="pill-since" style="color:var(--red)">–</div>
+      <div class="pill-lbl">Seit letzter</div>
+    </div>
+    <div class="pill">
+      <div class="pill-val" id="pill-avg" style="color:var(--amber)">–</div>
+      <div class="pill-lbl">Ø / Tag</div>
+    </div>
+    <div class="pill">
+      <div class="pill-val" id="pill-trend" style="color:var(--green)">–</div>
+      <div class="pill-lbl">Trend</div>
+    </div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Strichliste heute</div>
+    <div class="tally-box" id="tally-box"></div>
+  </div>
+
+  <div class="section">
+    <div class="section-title">Auslöser heute</div>
+    <div class="trigger-summary" id="trigger-summary-home"></div>
+  </div>
+</div>
+
+<!-- ═══ VERLAUF ══════════════════════════════════════════════════════ -->
+<div id="screen-history" class="screen">
+  <div class="page-header"><div class="page-title">Verlauf</div></div>
+  <div class="cal-wrap">
+    <div class="cal-nav">
+      <button onclick="prevMonth()">‹</button>
+      <span class="month-title" id="cal-month-title"></span>
+      <button onclick="nextMonth()">›</button>
+    </div>
+    <div class="weekdays"><span>Mo</span><span>Di</span><span>Mi</span><span>Do</span><span>Fr</span><span>Sa</span><span>So</span></div>
+    <div class="days-grid" id="days-grid"></div>
+    <div class="cal-legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#00e676"></div>1–5</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ffb300"></div>6–12</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#ff3b5c"></div>13+</div>
+    </div>
+    <div class="detail-card" id="day-detail" style="display:none">
+      <div class="detail-title" id="detail-title"></div>
+      <div class="detail-sub" id="detail-sub"></div>
+      <div id="detail-entries"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TREND / STATS ════════════════════════════════════════════════ -->
+<div id="screen-stats" class="screen">
+  <div class="page-header"><div class="page-title">Trends</div></div>
+  <div style="padding:14px 20px 0;">
+
+    <!-- VERDICT -->
+    <div class="verdict-card" id="verdict-card"></div>
+
+    <!-- LINIENCHART 30 TAGE -->
+    <div class="chart-card">
+      <div class="chart-title">Verlauf – letzte 30 Tage</div>
+      <div class="line-chart-wrap">
+        <svg class="line-chart-svg" id="line-svg" viewBox="0 0 340 130" preserveAspectRatio="none"></svg>
+      </div>
+      <div class="lc-labels" id="lc-labels"></div>
+    </div>
+
+    <!-- HEATMAP -->
+    <div class="chart-card">
+      <div class="chart-title">Wann rauchst du? (Tageszeit)</div>
+      <div class="heatmap-grid" id="heatmap-grid"></div>
+      <div class="hm-labels">
+        <span class="hm-label">0h</span><span class="hm-label">6h</span>
+        <span class="hm-label">12h</span><span class="hm-label">18h</span><span class="hm-label">23h</span>
+      </div>
+    </div>
+
+    <!-- AUSLÖSER GESAMT -->
+    <div class="chart-card">
+      <div class="chart-title">Auslöser – Gesamtübersicht</div>
+      <div class="trigger-bars" id="trigger-bars-stats"></div>
+    </div>
+
+    <!-- KENNZAHLEN -->
+    <div class="stat-grid" id="stat-grid"></div>
+
+  </div>
+</div>
+
+<!-- ═══ EINSTELLUNGEN ════════════════════════════════════════════════ -->
+<div id="screen-settings" class="screen">
+  <div class="page-header"><div class="page-title">Optionen</div></div>
+  <div style="padding:14px 20px 0;">
+    <div class="settings-section">
+      <h3>Packungspreis (optional)</h3>
+      <p>Nur für die Kostenübersicht – kein Pflichtfeld.</p>
+      <div class="field"><label>Preis pro Packung (€)</label><input type="number" id="price-input" step="0.10" min="0" placeholder="z.B. 8.00"></div>
+      <div class="field"><label>Zigaretten pro Packung</label><input type="number" id="perpack-input" step="1" min="1" placeholder="z.B. 20"></div>
+      <button class="save-btn" id="save-btn" onclick="saveSettings()">Speichern</button>
+    </div>
+    <div class="settings-section">
+      <h3>Über HAFENKIPPE 🚢</h3>
+      <p style="margin-bottom:0">Alle Daten bleiben lokal auf diesem Gerät. Kein Server, keine Cloud, keine Anmeldung. HAFENKIPPE v1.0</p>
+    </div>
+    <button class="delete-btn" onclick="clearData()">Alle Daten löschen</button>
+  </div>
+</div>
+
+<!-- TAB BAR -->
+<nav class="tab-bar">
+  <div class="tab active" onclick="showTab('home')" id="tab-home">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3L2 12h3v9h6v-5h2v5h6v-9h3L12 3z"/></svg>
+    Heute
+  </div>
+  <div class="tab" onclick="showTab('history')" id="tab-history">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M17 12h-5v5h5v-5zM16 1v2H8V1H6v2H5c-1.11 0-1.99.9-1.99 2L3 19c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2h-1V1h-2zm3 18H5V8h14v11z"/></svg>
+    Verlauf
+  </div>
+  <div class="tab" onclick="showTab('stats')" id="tab-stats">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.5 18.49l6-6.01 4 4L22 6.92l-1.41-1.41-7.09 7.97-4-4L2 16.99l1.5 1.5z"/></svg>
+    Trends
+  </div>
+  <div class="tab" onclick="showTab('settings')" id="tab-settings">
+    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19.14 12.94c.04-.3.06-.61.06-.94s-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+    Optionen
+  </div>
+</nav>
+
+<script>
+// ── TRIGGERS ──────────────────────────────────────────────────────────
+const TRIGGERS = [
+  { id:'stress',   icon:'😤', name:'Stress',    color:'#ff3b5c' },
+  { id:'coffee',   icon:'☕', name:'Kaffee',    color:'#8B4513' },
+  { id:'bored',    icon:'😴', name:'Langeweile',color:'#448aff' },
+  { id:'alcohol',  icon:'🍺', name:'Alkohol',   color:'#ffb300' },
+  { id:'break',    icon:'⏸️', name:'Pause',     color:'#00e676' },
+  { id:'social',   icon:'👥', name:'Gesellschaft',color:'#b388ff' },
+  { id:'after',    icon:'🍽️', name:'Nach dem Essen',color:'#ff6b35' },
+  { id:'phone',    icon:'📱', name:'Telefonat', color:'#00bcd4' },
+];
+
+// ── DATA ──────────────────────────────────────────────────────────────
+function loadEntries() { try { return JSON.parse(localStorage.getItem('hk_entries') || '{}'); } catch { return {}; } }
+function saveEntries(e) { localStorage.setItem('hk_entries', JSON.stringify(e)); }
+function loadSettings() { try { return { pricePerPack:0, cigarettesPerPack:20, ...JSON.parse(localStorage.getItem('hk_settings') || '{}') }; } catch { return { pricePerPack:0, cigarettesPerPack:20 }; } }
+function saveSett(s) { localStorage.setItem('hk_settings', JSON.stringify(s)); }
+function dateKey(d) { return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
+function todayKey() { return dateKey(new Date()); }
+function fmtTime(ts) { const d=new Date(ts); return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
+function fmtDur(min) { if(min<1)return'gerade eben';if(min<60)return`${min} Min`;const h=Math.floor(min/60),m=min%60;return m>0?`${h}h ${m}m`:`${h}h`; }
+function getDayCount(daysAgo) { const entries=loadEntries();const d=new Date();d.setDate(d.getDate()-daysAgo);return(entries[dateKey(d)]||[]).length; }
+function getWeekTotal(weeksAgo) { let t=0;for(let i=0;i<7;i++)t+=getDayCount(weeksAgo*7+i);return t; }
+
+// ── TOAST ─────────────────────────────────────────────────────────────
+function showToast(msg) { const t=document.getElementById('toast');t.textContent=msg;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),2200); }
+
+// ── SMOKE ─────────────────────────────────────────────────────────────
+function spawnSmoke(x,y) {
+  for(let i=0;i<8;i++){
+    const p=document.createElement('div');p.className='smoke-particle';
+    const size=16+Math.random()*26,dx=(Math.random()-.5)*110,dur=.7+Math.random()*.7;
+    p.style.cssText=`left:${x-size/2}px;top:${y-size/2}px;width:${size}px;height:${size}px;--dur:${dur}s;--dx:${dx}px;`;
+    document.body.appendChild(p);setTimeout(()=>p.remove(),dur*1000+100);
+  }
+}
+
+// ── TIMER RING ────────────────────────────────────────────────────────
+function updateTimerRing(entries) {
+  const all = Object.values(entries).flat();
+  const ring = document.getElementById('timer-ring');
+  const circ = 2 * Math.PI * 88; // 553
+  if (all.length === 0) { ring.style.strokeDashoffset = circ; return; }
+  const last = Math.max(...all.map(e=>e.timestamp));
+  const minSince = (Date.now() - last) / 60000;
+  // Ring füllt sich über 4 Stunden (240 min) komplett
+  const pct = Math.min(minSince / 240, 1);
+  ring.style.strokeDashoffset = circ - (pct * circ);
+  // Farbe: rot → amber → grün
+  ring.style.stroke = pct < 0.33 ? '#ff3b5c' : pct < 0.66 ? '#ffb300' : '#00e676';
+}
+
+// ── TRIGGER FLOW ──────────────────────────────────────────────────────
+let pendingEntry = null;
+
+function startAddFlow(evt) {
+  if (evt) { const r=document.getElementById('add-btn').getBoundingClientRect();spawnSmoke(r.left+r.width/2,r.top+r.height/3); }
+  pendingEntry = { timestamp: Date.now() };
+  showTriggerSheet();
+}
+
+function showTriggerSheet() {
+  const grid = document.getElementById('trigger-grid');
+  grid.innerHTML = TRIGGERS.map(t =>
+    `<button class="trigger-btn" onclick="confirmTrigger('${t.id}')">
+      <span class="trigger-icon">${t.icon}</span>
+      <span class="trigger-name">${t.name}</span>
+    </button>`
+  ).join('');
+  document.getElementById('trigger-sheet').classList.add('open');
+}
+
+function confirmTrigger(triggerId) {
+  document.getElementById('trigger-sheet').classList.remove('open');
+  if (!pendingEntry) return;
+  pendingEntry.trigger = triggerId;
+  pendingEntry.id = Date.now().toString();
+  const entries = loadEntries();
+  const key = todayKey();
+  if (!entries[key]) entries[key] = [];
+  entries[key].push(pendingEntry);
+  saveEntries(entries);
+  if (navigator.vibrate) navigator.vibrate(55);
+  const n = entries[key].length;
+  const t = triggerId ? TRIGGERS.find(x=>x.id===triggerId) : null;
+  showToast(t ? `🚬 #${n} – ${t.icon} ${t.name}` : `🚬 #${n} eingetragen`);
+  pendingEntry = null;
+  renderHome();
+}
+
+function undoLast() {
+  const entries=loadEntries();const key=todayKey();
+  if(!entries[key]||entries[key].length===0){showToast('Nichts zum Rückgängigmachen');return;}
+  entries[key].pop();saveEntries(entries);
+  if(navigator.vibrate)navigator.vibrate(20);
+  renderHome();showToast('↩ Rückgängig gemacht');
+}
+
+function saveSettings() {
+  const price=parseFloat(document.getElementById('price-input').value.replace(',','.'))||0;
+  const perPack=parseInt(document.getElementById('perpack-input').value)||20;
+  saveSett({pricePerPack:price,cigarettesPerPack:perPack});
+  const btn=document.getElementById('save-btn');btn.textContent='✓ Gespeichert';btn.classList.add('saved');
+  if(navigator.vibrate)navigator.vibrate([30,30,30]);
+  setTimeout(()=>{btn.textContent='Speichern';btn.classList.remove('saved');},2000);
+  renderStats();renderHome();
+}
+
+function clearData() {
+  if(confirm('Alle Daten löschen?')){localStorage.removeItem('hk_entries');renderHome();renderHistory();renderStats();showToast('🗑 Alle Daten gelöscht');}
+}
+
+// ── SCAN ──────────────────────────────────────────────────────────────
+let scanStream=null,scanTimer=null;
+function openScan() {
+  document.getElementById('scan-overlay').classList.add('open');
+  document.getElementById('scan-success').classList.remove('show');
+  navigator.mediaDevices.getUserMedia({video:{facingMode:'environment'}})
+    .then(stream=>{
+      scanStream=stream;document.getElementById('scan-video').srcObject=stream;
+      scanTimer=setTimeout(()=>triggerScanSuccess(),2200+Math.random()*1200);
+    })
+    .catch(()=>{closeScan();startAddFlow(null);showToast('📷 Kamera nicht verfügbar');});
+}
+function triggerScanSuccess() {
+  if(navigator.vibrate)navigator.vibrate([80,40,120]);
+  document.getElementById('scan-success').classList.add('show');
+  setTimeout(()=>{closeScan();startAddFlow(null);},1400);
+}
+function closeScan() {
+  if(scanTimer){clearTimeout(scanTimer);scanTimer=null;}
+  if(scanStream){scanStream.getTracks().forEach(t=>t.stop());scanStream=null;}
+  document.getElementById('scan-overlay').classList.remove('open');
+  document.getElementById('scan-success').classList.remove('show');
+}
+
+// ── TALLY ─────────────────────────────────────────────────────────────
+function renderTally(count) {
+  const box=document.getElementById('tally-box');
+  if(count===0){box.innerHTML='<span class="tally-empty">Noch keine Einträge heute</span>';return;}
+  let html='';
+  const groups=Math.floor(count/5),rem=count%5;
+  for(let g=0;g<groups;g++){
+    html+=`<div class="tally-group">`;
+    for(let i=0;i<4;i++)html+=`<div class="tally-mark" style="animation-delay:${(g*5+i)*.04}s"></div>`;
+    html+=`<div class="tally-cross" style="animation-delay:${(g*5+4)*.04}s"></div></div>`;
+  }
+  if(rem>0){
+    html+=`<div class="tally-group">`;
+    for(let i=0;i<rem;i++)html+=`<div class="tally-mark" style="animation-delay:${(groups*5+i)*.04}s"></div>`;
+    html+=`</div>`;
+  }
+  box.innerHTML=html;
+}
+
+// ── TRIGGER SUMMARY ───────────────────────────────────────────────────
+function renderTriggerSummary(entries, containerId) {
+  const today = entries[todayKey()] || [];
+  const counts = {};
+  today.forEach(e=>{ if(e.trigger) counts[e.trigger]=(counts[e.trigger]||0)+1; });
+  const el = document.getElementById(containerId);
+  const sorted = Object.entries(counts).sort((a,b)=>b[1]-a[1]);
+  if (sorted.length === 0) {
+    el.innerHTML = '<span style="font-size:13px;color:var(--muted)">Noch keine Auslöser erfasst</span>';
+    return;
+  }
+  const max = sorted[0][1];
+  el.innerHTML = `<div class="trigger-bars">${sorted.map(([id,n])=>{
+    const t=TRIGGERS.find(x=>x.id===id)||{icon:'❓',name:id,color:'#666'};
+    return `<div class="trigger-bar-row">
+      <div class="trigger-bar-label" style="color:${t.color}">${t.icon} ${t.name}</div>
+      <div class="trigger-bar-bg"><div class="trigger-bar-fill" style="width:${n/max*100}%;background:${t.color}"></div></div>
+      <div class="trigger-bar-val">${n}</div>
+    </div>`;
+  }).join('')}</div>`;
+}
+
+// ── RENDER HOME ───────────────────────────────────────────────────────
+let sinceInterval=null;
+function renderHome() {
+  const entries=loadEntries();
+  const today=entries[todayKey()]||[];
+  const count=today.length;
+  const DAYS=['So','Mo','Di','Mi','Do','Fr','Sa'];
+  const MONTHS=['Jan','Feb','Mär','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Dez'];
+  const now=new Date();
+  document.getElementById('date-label').textContent=`${DAYS[now.getDay()]}, ${now.getDate()}. ${MONTHS[now.getMonth()]}`;
+  document.getElementById('today-count').textContent=count;
+  document.getElementById('today-label').textContent=count===1?'Zigarette':'Zigaretten';
+
+  updateSinceLast(entries);
+  updateTimerRing(entries);
+  if(sinceInterval)clearInterval(sinceInterval);
+  sinceInterval=setInterval(()=>{updateSinceLast(loadEntries());updateTimerRing(loadEntries());},60000);
+
+  // Ø 7 Tage
+  let w7=0;for(let i=0;i<7;i++)w7+=getDayCount(i);
+  document.getElementById('pill-avg').textContent=(w7/7).toFixed(1).replace('.',',');
+
+  // Trend
+  const thisW=getWeekTotal(0),lastW=getWeekTotal(1);
+  const tp=document.getElementById('pill-trend');
+  if(lastW===0){tp.textContent='–';tp.style.color='var(--muted)';}
+  else{const diff=thisW-lastW,pct=Math.round(Math.abs(diff)/lastW*100);
+    if(diff<0){tp.textContent=`↓${pct}%`;tp.style.color='var(--green)';}
+    else if(diff>0){tp.textContent=`↑${pct}%`;tp.style.color='var(--red)';}
+    else{tp.textContent='=';tp.style.color='var(--amber)';}
+  }
+
+  renderTally(count);
+  renderTriggerSummary(entries,'trigger-summary-home');
+}
+
+function updateSinceLast(entries) {
+  const all=Object.values(entries).flat();
+  const el=document.getElementById('pill-since');
+  const hero=document.getElementById('hero-timer');
+  if(all.length===0){el.textContent='–';hero.textContent='Tippen zum Eintragen';return;}
+  const last=Math.max(...all.map(e=>e.timestamp));
+  const min=Math.floor((Date.now()-last)/60000);
+  const txt=fmtDur(min);
+  el.textContent=txt;
+  hero.textContent=`Letzte vor ${txt}`;
+}
+
+// ── RENDER HISTORY ────────────────────────────────────────────────────
+let calYear,calMonth,selectedDate=null;
+function initCalendar(){const n=new Date();calYear=n.getFullYear();calMonth=n.getMonth();}
+function prevMonth(){if(calMonth===0){calYear--;calMonth=11;}else calMonth--;selectedDate=null;renderHistory();}
+function nextMonth(){if(calMonth===11){calYear++;calMonth=0;}else calMonth++;selectedDate=null;renderHistory();}
+
+function renderHistory() {
+  const entries=loadEntries();
+  const MONTHS=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  document.getElementById('cal-month-title').textContent=`${MONTHS[calMonth]} ${calYear}`;
+  const grid=document.getElementById('days-grid');grid.innerHTML='';
+  const today=new Date();
+  const firstDow=(new Date(calYear,calMonth,1).getDay()+6)%7;
+  for(let i=0;i<firstDow;i++)grid.appendChild(document.createElement('div'));
+  const dim=new Date(calYear,calMonth+1,0).getDate();
+  for(let d=1;d<=dim;d++){
+    const date=new Date(calYear,calMonth,d);const key=dateKey(date);
+    const count=(entries[key]||[]).length;
+    const isToday=key===dateKey(today);const isSel=selectedDate&&key===dateKey(selectedDate);
+    const cell=document.createElement('div');
+    cell.className='day-cell'+(isToday?' today':'')+(isSel?' selected':'');
+    cell.innerHTML=`<span>${d}</span>`;
+    if(count>0){const dot=document.createElement('div');dot.className='day-dot';dot.style.background=isSel?'#fff':(count<=5?'#00e676':count<=12?'#ffb300':'#ff3b5c');cell.appendChild(dot);}
+    cell.onclick=()=>{selectedDate=date;renderHistory();renderDayDetail(date,entries);};
+    grid.appendChild(cell);
+  }
+  if(selectedDate)renderDayDetail(selectedDate,entries);
+}
+
+function renderDayDetail(date,entries) {
+  const MONTHS=['Januar','Februar','März','April','Mai','Juni','Juli','August','September','Oktober','November','Dezember'];
+  const key=dateKey(date);const dayEntries=entries[key]||[];
+  const detail=document.getElementById('day-detail');detail.style.display='block';
+  document.getElementById('detail-title').textContent=`${date.getDate()}. ${MONTHS[date.getMonth()]} ${date.getFullYear()}`;
+  document.getElementById('detail-sub').textContent=dayEntries.length===0?'Keine Einträge':`${dayEntries.length} Zigarette${dayEntries.length!==1?'n':''} eingetragen`;
+  const el=document.getElementById('detail-entries');
+  if(dayEntries.length===0){el.innerHTML='<div style="text-align:center;padding:12px;color:var(--muted)">✨ Rauchfreier Tag!</div>';}
+  else{el.innerHTML=dayEntries.map((e,i)=>{
+    const t=e.trigger?TRIGGERS.find(x=>x.id===e.trigger):null;
+    return `<div class="entry-row"><span class="entry-time">${fmtTime(e.timestamp)}</span><div class="entry-meta">${t?`<span class="entry-trigger" style="color:${t.color}">${t.icon} ${t.name}</span>`:''}<span class="entry-num">#${i+1}</span></div></div>`;
+  }).join('');}
+}
+
+// ── RENDER STATS ──────────────────────────────────────────────────────
+function renderStats() {
+  const entries=loadEntries();
+  const settings=loadSettings();
+
+  // VERDICT
+  const thisW=getWeekTotal(0),lastW=getWeekTotal(1);
+  const vc=document.getElementById('verdict-card');
+  if(lastW===0&&thisW===0){
+    vc.style.background='rgba(68,138,255,.08)';vc.style.border='1px solid rgba(68,138,255,.2)';
+    vc.innerHTML=`<div class="verdict-icon">📊</div><div><div class="verdict-title" style="color:var(--blue)">Noch keine Vergleichsdaten</div><div class="verdict-sub" style="color:var(--muted)">Tracke ein paar Tage – dann siehst du deinen Trend</div></div>`;
+  } else if(lastW===0){
+    vc.style.background='rgba(255,179,0,.08)';vc.style.border='1px solid rgba(255,179,0,.2)';
+    vc.innerHTML=`<div class="verdict-icon">🆕</div><div><div class="verdict-title" style="color:var(--amber)">Erste Woche läuft</div><div class="verdict-sub" style="color:rgba(255,179,0,.7)">Nächste Woche gibt's den ersten Vergleich</div></div>`;
+  } else {
+    const diff=thisW-lastW,pct=Math.round(Math.abs(diff)/lastW*100);
+    if(diff<-2){vc.style.background='rgba(0,230,118,.08)';vc.style.border='1px solid rgba(0,230,118,.25)';vc.innerHTML=`<div class="verdict-icon">🎉</div><div><div class="verdict-title" style="color:var(--green)">Weniger geraucht!</div><div class="verdict-sub" style="color:rgba(0,230,118,.7)">Diese Woche ${pct}% weniger als letzte Woche</div></div>`;}
+    else if(diff>2){vc.style.background='rgba(255,59,92,.08)';vc.style.border='1px solid rgba(255,59,92,.25)';vc.innerHTML=`<div class="verdict-icon">⚠️</div><div><div class="verdict-title" style="color:var(--red)">Mehr geraucht</div><div class="verdict-sub" style="color:rgba(255,59,92,.7)">Diese Woche ${pct}% mehr als letzte Woche</div></div>`;}
+    else{vc.style.background='rgba(255,179,0,.08)';vc.style.border='1px solid rgba(255,179,0,.2)';vc.innerHTML=`<div class="verdict-icon">➡️</div><div><div class="verdict-title" style="color:var(--amber)">Etwa gleich geblieben</div><div class="verdict-sub" style="color:rgba(255,179,0,.7)">Kaum Unterschied zur letzten Woche</div></div>`;}
+  }
+
+  // LINE CHART 30 Tage
+  const days30=[];
+  for(let i=29;i>=0;i--){const d=new Date();d.setDate(d.getDate()-i);days30.push({date:d,count:(entries[dateKey(d)]||[]).length});}
+  const maxC=Math.max(...days30.map(d=>d.count),1);
+  const W=340,H=130,PAD=8;
+  const pts=days30.map((d,i)=>{
+    const x=PAD+(i/(days30.length-1))*(W-PAD*2);
+    const y=H-PAD-(d.count/maxC)*(H-PAD*2);
+    return{x,y,count:d.count,date:d.date};
+  });
+  const pathD=pts.map((p,i)=>`${i===0?'M':'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const areaD=`${pathD} L${pts[pts.length-1].x.toFixed(1)},${H} L${pts[0].x.toFixed(1)},${H} Z`;
+  // Grid lines
+  let gridLines='';
+  for(let g=0;g<=4;g++){const y=PAD+(g/4)*(H-PAD*2);gridLines+=`<line class="lc-grid" x1="${PAD}" y1="${y.toFixed(1)}" x2="${W-PAD}" y2="${y.toFixed(1)}"/>`;}
+  // Dots only for notable points
+  const dots=pts.filter(p=>p.count>0).map(p=>`<circle class="lc-dot" cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3"/>`).join('');
+  document.getElementById('line-svg').innerHTML=`
+    <defs><linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#ff3b5c" stop-opacity=".4"/><stop offset="100%" stop-color="#ff3b5c" stop-opacity="0"/></linearGradient></defs>
+    ${gridLines}
+    <path class="lc-area" d="${areaD}" fill="url(#areaGrad)"/>
+    <path class="lc-line" d="${pathD}"/>
+    ${dots}
+  `;
+  // Labels: every 7 days
+  const DAY_SHORT=['So','Mo','Di','Mi','Do','Fr','Sa'];
+  const labelEls=days30.filter((_,i)=>i%7===0||i===29).map(d=>`<span class="lc-label">${DAY_SHORT[d.date.getDay()]} ${d.date.getDate()}.${d.date.getMonth()+1}</span>`).join('');
+  document.getElementById('lc-labels').innerHTML=labelEls;
+
+  // HEATMAP
+  const hourCounts=new Array(24).fill(0);
+  Object.values(entries).flat().forEach(e=>{const h=new Date(e.timestamp).getHours();hourCounts[h]++;});
+  const maxH=Math.max(...hourCounts,1);
+  document.getElementById('heatmap-grid').innerHTML=hourCounts.map((c,h)=>{
+    const intensity=c/maxH;
+    const bg=c===0?'var(--border)':`rgba(255,59,92,${.15+intensity*.85})`;
+    return `<div class="hm-cell" style="background:${bg}" title="${h}:00 – ${c}x"></div>`;
+  }).join('');
+
+  // TRIGGER BARS gesamt
+  const allEntries=Object.values(entries).flat();
+  const trigCounts={};
+  allEntries.forEach(e=>{if(e.trigger)trigCounts[e.trigger]=(trigCounts[e.trigger]||0)+1;});
+  const sorted=Object.entries(trigCounts).sort((a,b)=>b[1]-a[1]);
+  const maxT=sorted.length>0?sorted[0][1]:1;
+  const tbEl=document.getElementById('trigger-bars-stats');
+  if(sorted.length===0){tbEl.innerHTML='<span style="font-size:13px;color:var(--muted)">Noch keine Auslöser erfasst – beim Eintragen auswählen</span>';}
+  else{tbEl.innerHTML=`<div class="trigger-bars">${sorted.map(([id,n])=>{const t=TRIGGERS.find(x=>x.id===id)||{icon:'❓',name:id,color:'#666'};return`<div class="trigger-bar-row"><div class="trigger-bar-label" style="color:${t.color}">${t.icon} ${t.name}</div><div class="trigger-bar-bg"><div class="trigger-bar-fill" style="width:${n/maxT*100}%;background:${t.color}"></div></div><div class="trigger-bar-val">${n}</div></div>`;}).join('')}</div>`;}
+
+  // KENNZAHLEN
+  const now=new Date();
+  let monthTotal=0;
+  for(let i=1;i<=now.getDate();i++)monthTotal+=(entries[dateKey(new Date(now.getFullYear(),now.getMonth(),i))]||[]).length;
+  const allDays=Object.keys(entries).filter(k=>entries[k].length>0);
+  const maxDay=allDays.reduce((m,k)=>Math.max(m,entries[k].length),0);
+  let total7=0;for(let i=0;i<7;i++)total7+=getDayCount(i);
+  const ppc=settings.pricePerPack>0?settings.pricePerPack/settings.cigarettesPerPack:0;
+  const costMonth=ppc>0?(monthTotal*ppc).toFixed(2).replace('.',',')+' €':'–';
+  document.getElementById('stat-grid').innerHTML=`
+    <div class="stat-tile"><div class="stat-tile-val" style="color:var(--amber)">${(total7/7).toFixed(1).replace('.',',')}</div><div class="stat-tile-lbl">Ø / Tag</div><div class="stat-tile-sub">letzte 7 Tage</div></div>
+    <div class="stat-tile"><div class="stat-tile-val" style="color:var(--red)">${monthTotal}</div><div class="stat-tile-lbl">Diesen Monat</div><div class="stat-tile-sub">Zigaretten gesamt</div></div>
+    <div class="stat-tile"><div class="stat-tile-val" style="color:var(--blue)">${maxDay||'–'}</div><div class="stat-tile-lbl">Rekordtag</div><div class="stat-tile-sub">meiste an einem Tag</div></div>
+    <div class="stat-tile"><div class="stat-tile-val" style="color:var(--green)">${costMonth}</div><div class="stat-tile-lbl">Kosten Monat</div><div class="stat-tile-sub">${ppc>0?'bei '+settings.pricePerPack.toFixed(2).replace('.',',')+' €/Pack':'Preis nicht gesetzt'}</div></div>
+  `;
+}
+
+function renderSettings(){const s=loadSettings();document.getElementById('price-input').value=s.pricePerPack>0?s.pricePerPack.toFixed(2):'';document.getElementById('perpack-input').value=s.cigarettesPerPack;}
+
+// ── TABS ──────────────────────────────────────────────────────────────
+function showTab(name){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.getElementById('screen-'+name).classList.add('active');
+  document.getElementById('tab-'+name).classList.add('active');
+  if(name==='home')renderHome();
+  if(name==='history')renderHistory();
+  if(name==='stats')renderStats();
+  if(name==='settings')renderSettings();
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────
+initCalendar();
+renderHome();
+</script>
+</body>
+</html>
