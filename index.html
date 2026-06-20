@@ -7,6 +7,10 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="theme-color" content="#080810">
   <title>HAFENKIPPE</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="apple-mobile-web-app-title" content="HAFENKIPPE">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="apple-touch-icon" href="icon-192.png">
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&display=swap');
     * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
@@ -780,6 +784,13 @@ function showTab(name){
 // ── INIT ──────────────────────────────────────────────────────────────
 initCalendar();
 renderHome();
+
+// ── SERVICE WORKER (PWA) ──────────────────────────────────────────────
+if('serviceWorker' in navigator){
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/hafenkippe/sw.js').catch(()=>{});
+  });
+}
 </script>
 </body>
 </html>
